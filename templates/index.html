@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fish Disease Detection - Image Upload</title>
+    <title>Fish Disease Detection</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center">
     <!-- Header -->
@@ -61,21 +62,18 @@
         </nav>
      </header>
     <!-- Main Content -->
-    <main class="flex-grow container mx-auto mt-8 px-4">
-        <!-- Real-Time Statistics -->
-        <section class="mb-8">
-            <h2 id="realTimeStatsTitle" class="text-2xl font-semibold text-gray-800 mb-4">Real-Time Statistics</h2>
-            <div class="grid grid-cols-2 gap-4">
-                <div class="bg-white shadow-md rounded-lg p-4 text-center">
-                    <h3 class="text-lg font-bold text-gray-600">Fish Analyzed Today</h3>
-                    <p class="text-2xl text-blue-600 font-bold">20</p>
-                </div>
-                <div class="bg-white shadow-md rounded-lg p-4 text-center">
-                    <h3 class="text-lg font-bold text-gray-600">Disease Alerts</h3>
-                    <p class="text-2xl text-red-600 font-bold">5</p>
-                </div>
+       <section class="mb-8">
+        <div class="grid grid-cols-2 gap-4">
+            <div class="bg-white shadow-md rounded-lg p-4 text-center">
+                <h3 class="text-lg font-bold text-gray-600">Fish Analyzed Today</h3>
+                <p id="totalToday" class="text-2xl text-blue-600 font-bold">0</p>
             </div>
-        </section>
+            <div class="bg-white shadow-md rounded-lg p-4 text-center">
+                <h3 class="text-lg font-bold text-gray-600">Disease Alerts</h3>
+                <p id="diseaseAlerts" class="text-2xl text-red-600 font-bold">0</p>
+            </div>
+        </div>
+    </section>
         <!-- Latest Notifications -->
         <section class="mb-8">
             <h2 id="latestNotificationsTitle" class="text-2xl font-semibold text-gray-800 mb-4">Latest Notifications</h2>
@@ -145,6 +143,53 @@
     </footer>
     <!-- JavaScript -->
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+
+
+     <script>
+        // Firebase Config
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            databaseURL: "YOUR_DATABASE_URL",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Initialize Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // Real-time Updates
+        function updateAnalytics() {
+            const today = new Date().toISOString().split('T')[0];
+            const predictionsRef = database.ref('predictions');
+            
+            predictionsRef.on('value', (snapshot) => {
+                let total = 0;
+                let alerts = 0;
+
+                snapshot.forEach((childSnapshot) => {
+                    const prediction = childSnapshot.val();
+                    const predictionDate = new Date(prediction.timestamp).toISOString().split('T')[0];
+                    
+                    if(predictionDate === today) {
+                        total++;
+                        if(!prediction.is_healthy) alerts++;
+                    }
+                });
+
+                document.getElementById('totalToday').textContent = total;
+                document.getElementById('diseaseAlerts').textContent = alerts;
+            });
+        }
+
+        // Initialize when page loads
+        window.addEventListener('load', () => {
+            updateAnalytics();
+        });
+    </script>
 
 </body>
 </html>
