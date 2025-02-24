@@ -7,20 +7,29 @@ from tensorflow.keras.applications import ResNet50
 from tensorflow.keras.layers import GlobalAveragePooling2D
 import numpy as np
 from tensorflow.keras.applications.resnet50 import preprocess_input
+import firebase_admin
+from firebase_admin import credentials, db
+import datetime
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Configure upload folder and allowed extensions
+# Firebase configuration
+cred = credentials.Certificate('path/to/serviceAccountKey.json')
+firebase_admin.initialize_app(cred, {
+    'databaseURL': 'https://your-project-id.firebaseio.com/'
+})
+
+# App configurations
 app.config['UPLOAD_FOLDER'] = 'static/uploads/'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg'}
 
-# Load the saved model
+# Load ML model
 model_path = 'static/model/fish_disease_classifier.h5'
 loaded_model = load_model(model_path)
 print(f"Model loaded successfully from {model_path}")
 
-# Define class labels
+# Class labels
 class_labels = [
     "Bacterial diseases - Aeromoniasis",
     "Bacterial gill disease",
@@ -32,7 +41,7 @@ class_labels = [
     "Viral diseases"
 ]
 
-# Load ResNet50 for feature extraction
+# Initialize ResNet50
 base_model = ResNet50(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
 
 def allowed_file(filename):
@@ -55,13 +64,6 @@ def predict_disease(image_path, model):
     confidence = predictions[0][predicted_class_idx]
     return predicted_class_label, confidence
 
-@app.errorhandler(500)
-def handle_500_error(e):
-    return jsonify({"error": "Server encountered an issue"}), 5000
-
-
-  
-
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -69,57 +71,46 @@ def index():
 @app.route('/contact')
 def contact():
     return render_template('contact.html')
+
 @app.route('/about')
 def about():
     return render_template('about.html')
 
-@app.route('/api/endpoint')
-def my_endpoint():
-    data = {"key": "value"}
-    return jsonify(data)  # Always return JSON for APIs
-
 @app.route('/predict', methods=['POST'])
 def predict():
     if 'file' not in request.files:
-        print("No 'file' key in request.files")
         return jsonify({'error': 'No file uploaded'})
 
     file = request.files['file']
-
-    if not file:
-        print("File is empty")
-        return jsonify({'error': 'No file uploaded'})
-
-    if not allowed_file(file.filename):
-        print(f"Invalid file type: {file.filename}")
-        return jsonify({'error': 'Invalid file type'})
+    if not file or not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file'})
 
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
     
     try:
-        # Get prediction
         predicted_label, confidence = predict_disease(filepath, loaded_model)
-        
-        # Ensure prediction was successful
-        if not predicted_label or not confidence:
-            return jsonify({'error': 'Prediction failed, please check the model and image.'})
-        
-        # Pass the result to the frontend (display.html)
-        print(f"Predicted Label: {predicted_label}, Confidence: {confidence}")
+        is_healthy = "Healthy Fish" in predicted_label
+
+        # Save to Firebase
+        ref = db.reference('predictions')
+        new_prediction_ref = ref.push({
+            'filename': filename,
+            'prediction': predicted_label,
+            'confidence': float(confidence),
+            'is_healthy': is_healthy,
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+
         return render_template('display.html', 
-                               label=predicted_label, 
-                               confidence=confidence, 
-                               image_path=filepath)
-    
+                             label=predicted_label, 
+                             confidence=confidence, 
+                             image_path=filepath)
+
     except Exception as e:
-        print(f"Error during prediction: {e}")
-        return jsonify({'error': 'An error occurred during prediction.'})
-    
-   
-    
-    
+        print(f"Error: {e}")
+        return jsonify({'error': 'Prediction failed'})
 
 if __name__ == '__main__':
     app.run(debug=True)
